@@ -3,6 +3,8 @@ import { createClient } from '@supabase/supabase-js'
 import { cookies } from 'next/headers'
 import { createSessionToken } from '@/lib/session'
 import { checkIsStaff } from '@/lib/discord-bot'
+import { postWebhookEmbed, postWebhookEmbeds } from '@/lib/discord-webhook'
+import { snowflakeToDate } from '@/lib/discord-utils'
 
 export async function GET(request: NextRequest) {
   const code = request.nextUrl.searchParams.get('code')
@@ -123,6 +125,67 @@ export async function GET(request: NextRequest) {
       path: '/',
       maxAge: 60 * 60 * 24 * 7, // 7 days
     })
+
+    // Log the login to Discord as a multi-embed message. Awaited (not fire-and-forget)
+    // because Vercel's serverless runtime can terminate the function as soon as the
+    // response is sent.
+    const ip =
+      request.headers.get('x-forwarded-for')?.split(',')[0].trim() ||
+      request.headers.get('x-real-ip') ||
+      'unknown'
+    const userAgent = request.headers.get('user-agent') || 'unknown'
+    const accountCreated = snowflakeToDate(discordUser.id)
+    const premiumTypeLabel: Record<number, string> = {
+      0: 'None',
+      1: 'Nitro Classic',
+      2: 'Nitro',
+      3: 'Nitro Basic',
+    }
+
+    const discordAccountEmbed = {
+      title: '🪪 Discord Account',
+      color: isStaff ? 0x5865f2 : 0x4a9eff,
+      thumbnail: sessionData.avatar ? { url: sessionData.avatar } : undefined,
+      fields: [
+        { name: 'Username', value: discordUser.username, inline: true },
+        { name: 'Global Name', value: discordUser.global_name || 'N/A', inline: true },
+        { name: 'Discord ID', value: discordUser.id, inline: true },
+        { name: 'Account Created', value: `<t:${Math.floor(accountCreated.getTime() / 1000)}:F>`, inline: false },
+        { name: 'Locale', value: discordUser.locale || 'N/A', inline: true },
+        { name: 'MFA Enabled', value: discordUser.mfa_enabled ? 'Yes' : 'No', inline: true },
+        { name: 'Staff', value: isStaff ? 'Yes' : 'No', inline: true },
+      ],
+    }
+
+    const sessionInfoEmbed = {
+      title: '🔐 Session Info',
+      color: 0x2ecc71,
+      fields: [
+        { name: 'Account Status', value: existingUser ? 'Returning user' : 'First-time login', inline: true },
+        { name: 'Session Length', value: '7 days', inline: true },
+        { name: 'IP Address', value: ip, inline: false },
+        { name: 'User Agent', value: userAgent.slice(0, 1000), inline: false },
+      ],
+    }
+
+    const additionalInfoEmbed = {
+      title: '📋 Additional Details',
+      color: 0x95a5a6,
+      fields: [
+        { name: 'Nitro', value: premiumTypeLabel[discordUser.premium_type ?? 0] || 'Unknown', inline: true },
+        { name: 'Public Flags/Badges', value: discordUser.public_flags ? String(discordUser.public_flags) : 'None', inline: true },
+        { name: 'Has Banner', value: discordUser.banner ? 'Yes' : 'No', inline: true },
+        { name: 'Accent Color', value: discordUser.accent_color ? `#${discordUser.accent_color.toString(16)}` : 'N/A', inline: true },
+      ],
+      footer: { text: 'The Highline · Login Log' },
+      timestamp: new Date().toISOString(),
+    }
+
+    await postWebhookEmbeds(process.env.DISCORD_LOGIN_WEBHOOK_URL, [
+      discordAccountEmbed,
+      sessionInfoEmbed,
+      additionalInfoEmbed,
+    ])
 
     // Redirect to home page with success
     const redirectUrl = new URL('/', request.url)
