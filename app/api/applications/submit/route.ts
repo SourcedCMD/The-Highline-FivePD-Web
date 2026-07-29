@@ -1,26 +1,18 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { cookies } from 'next/headers'
+import { verifySessionToken } from '@/lib/session'
 
 export async function POST(request: NextRequest) {
   try {
     // Verify user is authenticated
     const cookieStore = await cookies()
-    const sessionCookie = cookieStore.get('discord-session')
-    
-    if (!sessionCookie) {
+    const token = cookieStore.get('discord-session')?.value
+    const session = verifySessionToken<{ id: string }>(token)
+
+    if (!session) {
       return NextResponse.json(
         { error: 'Authentication required' },
-        { status: 401 }
-      )
-    }
-
-    let session
-    try {
-      session = JSON.parse(sessionCookie.value)
-    } catch {
-      return NextResponse.json(
-        { error: 'Invalid session' },
         { status: 401 }
       )
     }
@@ -53,6 +45,20 @@ export async function POST(request: NextRequest) {
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
       process.env.SUPABASE_SERVICE_ROLE_KEY!
     )
+
+    // Block submission if a staff member has closed this department's applications
+    const { data: deptStatus } = await supabase
+      .from('department_status')
+      .select('is_open')
+      .eq('department_id', department)
+      .maybeSingle()
+
+    if (deptStatus && deptStatus.is_open === false) {
+      return NextResponse.json(
+        { error: 'Applications for this department are currently closed' },
+        { status: 403 }
+      )
+    }
 
     const { error: dbError } = await supabase.from('applications').insert({
       department_id: department,

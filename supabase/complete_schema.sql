@@ -53,6 +53,19 @@ create index if not exists idx_applications_status on public.applications(status
 alter table public.users enable row level security;
 alter table public.applications enable row level security;
 
+-- Profile bio
+alter table public.users add column if not exists bio text;
+
+-- Department application status (staff can open/close applications per department)
+create table if not exists public.department_status (
+  department_id varchar(255) primary key,
+  is_open boolean not null default true,
+  updated_at timestamptz default now(),
+  updated_by varchar(255)
+);
+
+alter table public.department_status enable row level security;
+
 -- IMPORTANT:
 -- This project currently writes/reads with the Supabase service role key on the server,
 -- which bypasses RLS. If you later move to user-scoped access, you'll need policies.

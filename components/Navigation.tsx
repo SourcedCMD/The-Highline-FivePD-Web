@@ -70,7 +70,17 @@ export default function Navigation() {
               <div className="text-gray-400">Loading...</div>
             ) : user ? (
               <div className="flex items-center space-x-4">
-                <span className="text-gray-300">{user.username || user.email}</span>
+                {user.isStaff && (
+                  <Link
+                    href="/staff"
+                    className="text-sm bg-gray-800 hover:bg-gray-700 border border-gray-700 text-gray-200 px-3 py-1.5 rounded transition"
+                  >
+                    Staff Panel
+                  </Link>
+                )}
+                <Link href="/profile" className="text-gray-300 hover:text-white transition">
+                  {user.username || user.email}
+                </Link>
                 <motion.button
                   onClick={handleLogout}
                   whileHover={{ scale: 1.05 }}

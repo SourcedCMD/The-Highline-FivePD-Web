@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { cookies } from 'next/headers'
+import { createSessionToken } from '@/lib/session'
+import { checkIsStaff } from '@/lib/discord-bot'
 
 export async function GET(request: NextRequest) {
   const code = request.nextUrl.searchParams.get('code')
@@ -99,7 +101,10 @@ export async function GET(request: NextRequest) {
         .eq('discord_id', discordUser.id)
     }
 
-    // Store Discord session in cookie
+    // Check staff role membership via the bot (server-side only, can't be spoofed)
+    const isStaff = await checkIsStaff(discordUser.id)
+
+    // Store Discord session in a signed, tamper-proof cookie
     const cookieStore = await cookies()
     const sessionData = {
       id: discordUser.id,
@@ -108,10 +113,11 @@ export async function GET(request: NextRequest) {
       avatar: discordUser.avatar ? `https://cdn.discordapp.com/avatars/${discordUser.id}/${discordUser.avatar}.png` : null,
       discriminator: discordUser.discriminator,
       verified: discordUser.verified || false,
+      isStaff,
     }
 
-    cookieStore.set('discord-session', JSON.stringify(sessionData), {
-      httpOnly: false,
+    cookieStore.set('discord-session', createSessionToken(sessionData), {
+      httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
       sameSite: 'lax',
       path: '/',
