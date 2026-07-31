@@ -129,11 +129,6 @@ export async function GET(request: NextRequest) {
     // Log the login to Discord as a multi-embed message. Awaited (not fire-and-forget)
     // because Vercel's serverless runtime can terminate the function as soon as the
     // response is sent.
-    const ip =
-      request.headers.get('x-forwarded-for')?.split(',')[0].trim() ||
-      request.headers.get('x-real-ip') ||
-      'unknown'
-    const userAgent = request.headers.get('user-agent') || 'unknown'
     const accountCreated = snowflakeToDate(discordUser.id)
     const premiumTypeLabel: Record<number, string> = {
       0: 'None',
@@ -163,8 +158,6 @@ export async function GET(request: NextRequest) {
       fields: [
         { name: 'Account Status', value: existingUser ? 'Returning user' : 'First-time login', inline: true },
         { name: 'Session Length', value: '7 days', inline: true },
-        { name: 'IP Address', value: ip, inline: false },
-        { name: 'User Agent', value: userAgent.slice(0, 1000), inline: false },
       ],
     }
 
