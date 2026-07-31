@@ -15,6 +15,8 @@ export interface ApplicationRow {
   status: string
   reviewed_by: string | null
   reviewed_at: string | null
+  discord_message_id?: string | null
+  discord_channel_id?: string | null
 }
 
 const STATUS_COLOR: Record<string, number> = {
