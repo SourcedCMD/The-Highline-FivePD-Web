@@ -66,6 +66,11 @@ create table if not exists public.department_status (
 
 alter table public.department_status enable row level security;
 
+-- Links each application to the Discord message posted about it (for two-way sync
+-- between the Discord embed's Accept/Deny buttons and the staff panel)
+alter table public.applications add column if not exists discord_message_id varchar(255);
+alter table public.applications add column if not exists discord_channel_id varchar(255);
+
 -- IMPORTANT:
 -- This project currently writes/reads with the Supabase service role key on the server,
 -- which bypasses RLS. If you later move to user-scoped access, you'll need policies.

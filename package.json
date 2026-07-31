@@ -1,4 +1,4 @@
-{
+w{
   "name": "the-highline",
   "version": "1.0.0",
   "private": true,
@@ -16,6 +16,7 @@
     "@supabase/auth-helpers-nextjs": "^0.8.7",
     "@supabase/auth-helpers-react": "^0.4.2",
     "discord.js": "^14.14.0",
+    "discord-interactions": "^3.4.0",
     "framer-motion": "^10.16.16"
   },
   "devDependencies": {

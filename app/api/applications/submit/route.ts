@@ -2,6 +2,9 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { cookies } from 'next/headers'
 import { verifySessionToken } from '@/lib/session'
+import { sendBotMessage } from '@/lib/discord-bot'
+import { buildApplicationMessage, type ApplicationRow } from '@/lib/application-embed'
+import { postWebhookEmbed } from '@/lib/discord-webhook'
 
 export async function POST(request: NextRequest) {
   try {
@@ -60,23 +63,27 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    const { error: dbError } = await supabase.from('applications').insert({
-      department_id: department,
-      department_name: departmentName,
-      user_id: userId,
-      user_email: userEmail,
-      username: username,
-      age: parseInt(age),
-      experience,
-      why_join: whyJoin,
-      what_can_you_bring: whatCanYouBring,
-      availability,
-      previous_experience: previousExperience || null,
-      submitted_at: new Date().toISOString(),
-      status: 'pending',
-    })
+    const { data: inserted, error: dbError } = await supabase
+      .from('applications')
+      .insert({
+        department_id: department,
+        department_name: departmentName,
+        user_id: userId,
+        user_email: userEmail,
+        username: username,
+        age: parseInt(age),
+        experience,
+        why_join: whyJoin,
+        what_can_you_bring: whatCanYouBring,
+        availability,
+        previous_experience: previousExperience || null,
+        submitted_at: new Date().toISOString(),
+        status: 'pending',
+      })
+      .select()
+      .single()
 
-    if (dbError) {
+    if (dbError || !inserted) {
       console.error('Database error:', dbError)
       return NextResponse.json(
         { error: 'Failed to save application to database' },
@@ -84,96 +91,25 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Helper function to truncate text for Discord embed limits
-    const truncateText = (text: string, maxLength: number = 1024) => {
-      if (!text) return 'N/A'
-      return text.length > maxLength ? text.substring(0, maxLength - 3) + '...' : text
-    }
+    const applicationRow = inserted as ApplicationRow
+    const { embeds, components } = buildApplicationMessage(applicationRow)
+    const channelId = process.env.DISCORD_APPLICATIONS_CHANNEL_ID
 
-    // Send to Discord webhook
-    const webhookUrl = process.env.DISCORD_WEBHOOK_URL
-    if (webhookUrl) {
-      try {
-        const embed = {
-          title: `📝 New ${departmentName} Application`,
-          description: `A new application has been submitted for **${departmentName}**\n\n**Application Details:**`,
-          color: 0x4a9eff, // Blue color
-          fields: [
-            {
-              name: '👤 Applicant Information',
-              value: `**Username:** ${username}\n**Email:** ${userEmail}\n**Discord ID:** ${userId}`,
-              inline: false,
-            },
-            {
-              name: '🎂 Age',
-              value: age.toString(),
-              inline: true,
-            },
-            {
-              name: '📋 Department',
-              value: departmentName,
-              inline: true,
-            },
-            {
-              name: '━━━━━━━━━━━━━━━━━━━━━━',
-              value: '\u200b', // Zero-width space for separator
-              inline: false,
-            },
-            {
-              name: '💼 Roleplay Experience',
-              value: truncateText(experience),
-              inline: false,
-            },
-            {
-              name: '❓ Why do you want to join?',
-              value: truncateText(whyJoin),
-              inline: false,
-            },
-            {
-              name: '✨ What can you bring?',
-              value: truncateText(whatCanYouBring),
-              inline: false,
-            },
-            {
-              name: '📅 Availability',
-              value: truncateText(availability),
-              inline: false,
-            },
-          ],
-          footer: {
-            text: 'The Highline',
-            icon_url: undefined,
-          },
-          timestamp: new Date().toISOString(),
-        }
+    if (channelId && process.env.DISCORD_BOT_TOKEN) {
+      // Posted by the bot (not the webhook) so the dropdown can receive interactions
+      const message = await sendBotMessage(channelId, { embeds, components })
 
-        // Add previous experience if provided
-        if (previousExperience && previousExperience.trim()) {
-          embed.fields.push({
-            name: '🏢 Previous Department/Staff Experience',
-            value: truncateText(previousExperience),
-            inline: false,
-          })
-        }
-
-        const webhookResponse = await fetch(webhookUrl, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            embeds: [embed],
-          }),
-        })
-
-        if (!webhookResponse.ok) {
-          console.error('Webhook error:', await webhookResponse.text())
-          // Don't fail the request if webhook fails
-        }
-      } catch (webhookError) {
-        console.error('Webhook error:', webhookError)
-        // Don't fail the request if webhook fails
+      if (message?.id) {
+        await supabase
+          .from('applications')
+          .update({ discord_message_id: message.id, discord_channel_id: channelId })
+          .eq('id', applicationRow.id)
       }
+    } else if (process.env.DISCORD_WEBHOOK_URL) {
+      // Fallback: bot isn't configured yet, so post via the plain webhook.
+      // No interactive dropdown in this mode - just a notification.
+      await postWebhookEmbed(process.env.DISCORD_WEBHOOK_URL, embeds[0])
+      await postWebhookEmbed(process.env.DISCORD_WEBHOOK_URL, embeds[1])
     }
 
     return NextResponse.json({ success: true })
